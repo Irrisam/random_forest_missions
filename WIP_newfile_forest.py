@@ -113,6 +113,7 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 # init de class pour la forest avec hyperparams opti par gridsearchCV 
 model = RandomForestClassifier(max_depth=4, min_samples_split=4, min_samples_leaf=100, n_estimators=5, random_state=2)
 
+
 # training
 model.fit(X_train, y_train)
 
@@ -123,8 +124,8 @@ predicted_count = evaluate_mission(model, label_encoders, mission_values=None)
 
 cross_val_scores = cross_val_score(model, X, y, cv=30, scoring='accuracy')
 
-print("mean values for cross validation check:", cross_val_scores.mean())
-print("standard type diff values for cross validation check:", cross_val_scores.std())
+print("Moyenne des scores de validation croisée :", cross_val_scores.mean())
+print("Écart-type des scores de validation croisée :", cross_val_scores.std())
 
 
 # affichage des scores de précision
