@@ -12,17 +12,17 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 class StatModels:
-    def __init__(self, mission_values=False, model_stats_check=False, confusion_matrix_check=False, checked_value="contractualized_count"):
+    def __init__(self, mission_values=False, model_stats_check=False, confusion_matrix_check=False, banned_rows_toggle=True, checked_value="contractualized_count"):
         self.mission_values = mission_values
         self.model_stats_check = model_stats_check
         self.confusion_matrix_check = confusion_matrix_check
         self.data = pd.read_csv("/Users/tristan/Downloads/data_matching_2023.csv")
         self.checked_value = checked_value
-        
+        self.banned_rows = ["region_id", "department_id", "specialty_id"]
+        self.banned_rows_toggle = banned_rows_toggle
         
         if self.checked_value == "cancelled_count":
             self.class_names = ["Not_canceled", "Canceled"]
-        
         
         self.X, self.y, self.label_encoders = self.data_formating()
         self.labels = sorted(self.y.unique())
@@ -72,9 +72,9 @@ class StatModels:
                 mission_df = mission_df.drop(["contractualized_count", "announcement_id"], axis=1)
             #mission_df.drop("salary")
             # encode with the same dictionary as the model
-            mission_df = mission_df.drop("region_id", axis=1)
-            mission_df = mission_df.drop("department_id", axis=1)
-            mission_df = mission_df.drop("specialty_id", axis=1)
+            if self.banned_rows_toggle == True:
+                mission_df = mission_df.drop(self.banned_rows, axis=1)
+            
 
             for column, le in self.label_encoders.items():
                 le.fit(self.X[column])  # fit on the original training data 
@@ -116,11 +116,10 @@ class StatModels:
         return gb_model, y_pred_gb
 
     def random_forest(self):
-        
     # init d'instance pour la forest avec hyperparams opti par gridsearchCV 
         if self.checked_value == "contractualized_count":
             #rf_model = RandomForestClassifier(max_depth=20, min_samples_split=2, min_samples_leaf=5, n_estimators=150, random_state=2)
-            rf_model = RandomForestClassifier(max_depth=None, min_samples_split=10, min_samples_leaf=2, n_estimators=150, class_weight= "balanced", random_state=42)
+            rf_model = RandomForestClassifier(max_depth=None, min_samples_split=10, min_samples_leaf=2, n_estimators=150, class_weight={0:1, 1:2.5}, random_state=35)
         elif self.checked_value == "cancelled_count":
             rf_model = RandomForestClassifier(max_depth=None, min_samples_split=10, min_samples_leaf=2, n_estimators=150, class_weight= "balanced", random_state=42)
             #rf_model = RandomForestClassifier(max_depth=None, min_samples_split=2, min_samples_leaf=5, n_estimators=50, random_state=2)
@@ -134,11 +133,10 @@ class StatModels:
         return rf_model, y_pred
 
     def data_formating(self):
-        self.data = self.data.drop("region_id", axis=1)
-        self.data = self.data.drop("department_id", axis=1)
-
-        self.data = self.data.drop("specialty_id", axis=1)
+        self.data['contractualized_count'] = self.data['contractualized_count'].apply(lambda x: 1 if x > 1 else x)
         # x = features y = cible
+        if self.banned_rows_toggle is True:
+            self.data = self.data.drop(self.banned_rows, axis=1)
         self.data = self.data.drop("announcement_id", axis = 1)
         if self.checked_value == "contractualized_count":
             X = self.data.drop("contractualized_count", axis=1)
@@ -175,7 +173,7 @@ class StatModels:
         print("standard type diff values for cross validation check:", cross_val_scores.std())
 
         # names y pred classes according to experience
-        report = classification_report(self.y_test, self.y_pred, zero_division=1, target_names=["contractualized", "not contractualized"])
+        report = classification_report(self.y_test, self.y_pred, zero_division=1, target_names=["not contractualized", "contractualized"])
         print("Rapport de classification :\n", report)
     
     def unittest_link(self):
@@ -214,5 +212,5 @@ class StatModels:
 mission = pd.read_csv("simple_mission_test.csv")
 mission_row = mission.iloc[0].to_dict()
 
-stat_model_instance = StatModels(mission_row, True, True, "contractualized_count")
+stat_model_instance = StatModels(mission_row, False, False, True, "contractualized_count")
 #stat_model_instance.random_forest_grid_search()
