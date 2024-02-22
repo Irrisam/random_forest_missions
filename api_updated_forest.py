@@ -1,3 +1,5 @@
+from fastapi import FastAPI
+import requests
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -7,16 +9,19 @@ from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import cross_val_score
-import sys
+import os 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
+
+app = FastAPI()
+
 
 class StatModels:
     def __init__(self, mission_values=False, model_stats_check=False, confusion_matrix_check=False, banned_rows_toggle=True, checked_value="contractualized_count"):
         self.mission_values = mission_values
         self.model_stats_check = model_stats_check
         self.confusion_matrix_check = confusion_matrix_check
-        self.data = pd.read_csv("/Users/tristan/Downloads/data_matching_2023.csv")
+        self.data = pd.read_csv(os.path.join(os.path.dirname(__file__), "data_matching_2023.csv"))
         self.checked_value = checked_value
         self.banned_rows = ["region_id", "department_id", "specialty_id"]
         self.banned_rows_toggle = banned_rows_toggle
@@ -161,7 +166,6 @@ class StatModels:
         #        print(f"{column} Encoder Dictionary:")
         #        print(dict(zip(le.classes_, le.transform(le.classes_))))
         return X, y, label_encoders
-    
     def model_stats(self):
         # affichage des scores de précision
         accuracy = accuracy_score(self.y_test, self.y_pred)
@@ -208,9 +212,44 @@ class StatModels:
         y_pred = best_rf_model.predict(self.X_test)
 
         return best_rf_model, y_pred
+@app.get("/")
+def run():
+    mission = pd.read_csv(os.path.join(os.path.dirname(__file__), "single_query.csv"))
+    mission_row = mission.iloc[0].to_dict()
+    stat_model_instance = StatModels(mission_row, False, False, True, "contractualized_count")
+    return(stat_model_instance.evaluate_mission())
+    #stat_model_instance.random_forest_grid_search()
     
-mission = pd.read_csv("simple_mission_test.csv")
-mission_row = mission.iloc[0].to_dict()
+@app.get("/csv")
+def api_query_call():
+    response_data = {"id": "66badd9d-66bb-4227-9781-daff02a5383a"}
+    session_id = response_data['id']
 
-stat_model_instance = StatModels(mission_row, False, False, True, "contractualized_count")
-stat_model_instance.random_forest_grid_search()
+    headers = {'X-Metabase-Session': session_id}
+
+    metabase_url = "https://metabase.medelse.com/api/card/893/query/csv"
+
+    variable_args = {
+        "announcement_id": "96650",
+    }
+
+    with requests.Session() as session:
+        session.headers.update(headers)
+        payload = {
+            "parameters": variable_args
+        }
+
+        response = session.post(metabase_url, json=payload)
+        response.raise_for_status()
+
+        csv_file_path = "/app/app/single_query.csv"
+
+        with open(csv_file_path, "wb") as csv_file:
+            csv_file.write(response.content)
+
+        print(f"CSV result saved to {csv_file_path}")
+        
+run()
+
+#docker build -t random_forest_docker .  
+#docker run -p 8000:8000 random_forest_docker
