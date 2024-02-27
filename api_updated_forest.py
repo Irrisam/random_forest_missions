@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+import json
 import requests
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,19 +10,20 @@ from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import cross_val_score
+import sys
 import os 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 app = FastAPI()
 
-
 class StatModels:
-    def __init__(self, mission_values=False, model_stats_check=False, confusion_matrix_check=False, banned_rows_toggle=True, checked_value="contractualized_count"):
+    def __init__(self, mission_values, model_stats_check=False, confusion_matrix_check=False, banned_rows_toggle=True, checked_value="contractualized_count"):
+        
         self.mission_values = mission_values
         self.model_stats_check = model_stats_check
         self.confusion_matrix_check = confusion_matrix_check
-        self.data = pd.read_csv(os.path.join(os.path.dirname(__file__), "data_matching_2023.csv"))
+        self.data = pd.read_csv(os.path.join(os.path.dirname(__file__), "datas_training_2023.csv"))
         self.checked_value = checked_value
         self.banned_rows = ["region_id", "department_id", "specialty_id"]
         self.banned_rows_toggle = banned_rows_toggle
@@ -34,8 +36,10 @@ class StatModels:
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.X, self.y, test_size=0.2, random_state=42)
         self.model, self.y_pred = self.random_forest()
         
-        if mission_values != False:
+        if mission_values:
             self.evaluate_mission()
+        else:
+            sys.exit()
         
         if self.confusion_matrix_check:
             self.build_confusion_matrix()
@@ -110,16 +114,10 @@ class StatModels:
 
 
     def gradient_booster(self):
-        
         gb_model = GradientBoostingClassifier(n_estimators=150, learning_rate=0.2, max_depth=5, random_state=1)
-
         gb_model.fit(self.X_train, self.y_train)
-
-        # Prédiction sur l'ensemble de test
         y_pred_gb = gb_model.predict(self.X_test)
-        
         return gb_model, y_pred_gb
-
     def random_forest(self):
     # init d'instance pour la forest avec hyperparams opti par gridsearchCV 
         if self.checked_value == "contractualized_count":
@@ -212,44 +210,55 @@ class StatModels:
         y_pred = best_rf_model.predict(self.X_test)
 
         return best_rf_model, y_pred
-@app.get("/")
-def run():
-    mission = pd.read_csv(os.path.join(os.path.dirname(__file__), "single_query.csv"))
-    mission_row = mission.iloc[0].to_dict()
-    stat_model_instance = StatModels(mission_row, False, False, True, "contractualized_count")
-    return(stat_model_instance.evaluate_mission())
-    #stat_model_instance.random_forest_grid_search()
-    
-@app.get("/csv")
-def api_query_call():
+
+def api_query_call(announcement_id = None):    
     response_data = {"id": "66badd9d-66bb-4227-9781-daff02a5383a"}
     session_id = response_data['id']
-
-    headers = {'X-Metabase-Session': session_id}
-
-    metabase_url = "https://metabase.medelse.com/api/card/893/query/csv"
-
-    variable_args = {
-        "announcement_id": "96650",
-    }
-
+    headers = {'X-Metabase-Session': session_id, 'Content-Type': 'application/json'} #session identification token for metabase API
+    
+    metabase_api_url = f"https://metabase.medelse.com/api/card/893/query/csv" #csv typed query
+    payload = [ {"type": "number", "value": announcement_id, "target": [ "variable", ["template-tag", "announcement_id"] ] } ] #query payload
+    
     with requests.Session() as session:
-        session.headers.update(headers)
-        payload = {
-            "parameters": variable_args
-        }
-
-        response = session.post(metabase_url, json=payload)
-        response.raise_for_status()
-
-        csv_file_path = "/app/app/single_query.csv"
-
+        session.headers.update(headers) #update headers for metabase API identification
+        if announcement_id is not None:
+            response = session.post(url=metabase_api_url + "?parameters=" + json.dumps(payload)) #rebuilt url to get filtered query from metabase API
+        else:
+            response = session.post(url=metabase_api_url) #unrequested ID
+        response.raise_for_status() #raises error numbers
+        
+        csv_file_path = os.path.join(os.path.dirname(__file__), "single_query.csv") #finds path to mission csv within local machine
         with open(csv_file_path, "wb") as csv_file:
             csv_file.write(response.content)
-
         print(f"CSV result saved to {csv_file_path}")
-        
-run()
 
-#docker build -t random_forest_docker .  
-#docker run -p 8000:8000 random_forest_docker
+
+@app.get("/{announcement_id}")
+def run_with_id(announcement_id):
+    int_check = all(char.isdigit() for char in announcement_id)#check for ints in inputed id (which is str)
+    if int_check is False:
+        return {"Please input a valid numeric announcement_id"}
+    api_query_call(announcement_id)
+    try:
+        csv_file_path = os.path.join(os.path.dirname(__file__), "single_query.csv")
+        mission = pd.read_csv(csv_file_path)
+        mission_row = mission.iloc[0].to_dict()#fetches the IDed mission line
+        stat_model_instance = StatModels(mission_row, False, False, True, "contractualized_count")
+        result = stat_model_instance.evaluate_mission()
+        return {result}
+    except IndexError:
+        return {"Please input a valid announcement_id"} #if ID prints nothing
+    #stat_model_instance.random_forest_grid_search()
+
+@app.get("/")
+def run():
+    api_query_call()
+    csv_file_path = os.path.join(os.path.dirname(__file__), "FS_single_query.csv") #safe mission csv file for ungiven id
+    mission = pd.read_csv(csv_file_path)
+    mission_row = mission.iloc[0].to_dict()
+    stat_model_instance = StatModels(mission_row, False, False, True, "contractualized_count")
+    result = stat_model_instance.evaluate_mission()
+    return {result}
+
+
+# docker run -p 8000:8000 random_forest_docker
