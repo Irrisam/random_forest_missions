@@ -1,1 +1,2 @@
-announcement_id,specialty_id,service_id,establishment_type,city_id,department_id,region_id,day_night,nbr_of_needs,mission_duration,salary,mission_weekday,mission_anticipation,contractualized_count,cancelled_count,matching_count
+announcement_id,specialty_id,service_id,establishment_type,city_id,department_id,region_id,day_night,nbr_of_needs,mission_duration,salary,mission_weekday,mission_anticipation,contractualized_count,matching_count
+97000,18,42,ssr,35958,94,6,DAY,1,660,552,6,2,0,153
